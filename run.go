@@ -2,7 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strconv"
+
+	"github.com/Galdoba/utils"
 )
 
 const (
@@ -50,15 +54,19 @@ func (fgr *figure) setCoords(coords string) {
 
 type board struct {
 	cellMAP map[string]*cell
+	maxRow  int
+	maxCol  int
 }
 
 func buildBoard() *board {
 	b := &board{}
 	b.cellMAP = make(map[string]*cell)
+	b.maxRow = 8
+	b.maxCol = 8
 	colr := -1
 	cellColor := "B"
-	for r := 0; r < 8; r++ {
-		for c := 0; c < 8; c++ {
+	for r := 0; r < b.maxRow; r++ {
+		for c := 0; c < b.maxCol; c++ {
 			l := letterRange()[(r)]
 			coordRange = append(coordRange, l+strconv.Itoa(c+1))
 			if colr < 0 {
@@ -79,18 +87,32 @@ func buildBoard() *board {
 func drawBoard(b *board) {
 	lRange := letterRange()
 	nRange := reverseSlice(numberRange())
+	fmt.Println("  ++--------------------------------------------------------------------++")
+	fmt.Println("  ++--------------------------------------------------------------------++")
 	for row := 0; row < 8; row++ {
 		for i := 0; i < 4; i++ {
 			for col := 0; col < 8; col++ {
+				if col == 0 {
+					fmt.Print("  ||  ")
+				}
 				coords := lRange[col] + nRange[row]
 				fmt.Print(b.cellMAP[coords].lines[i])
+				if col == 7 {
+					fmt.Print("  ||")
+				}
+				if i == 1 && col == 7 {
+					fmt.Print(" " + nRange[row])
+				}
 			}
 			fmt.Print("\n")
 		}
 	}
+	fmt.Println("  ++--------------------------------------------------------------------++")
+	fmt.Println("  ++--------------------------------------------------------------------++")
+	fmt.Println("        A       B       C       D       E       F       G       H")
 }
 
-func pawnLines(fType string, player int) []string {
+func figureLines(fType string, player int) []string {
 	var lines []string
 	switch fType {
 	case figureTypePawn:
@@ -120,7 +142,7 @@ func pawnLines(fType string, player int) []string {
 func (b *board) update() {
 	for i := range coordRange {
 		lines := getBlankLines(b.cellMAP[coordRange[i]])
-		lines[0] = placeTag(lines[0], coordRange[i])
+		//lines[0] = placeTag(lines[0], coordRange[i])
 		b.cellMAP[coordRange[i]].lines = lines
 		for _, v := range checkersMAP {
 
@@ -128,8 +150,9 @@ func (b *board) update() {
 
 				continue
 			}
-
-			b.cellMAP[coordRange[i]].lines[1] = v.fType
+			figureLines := figureLines(v.fType, v.player)
+			b.cellMAP[coordRange[i]].lines[1] = figureLines[0]
+			b.cellMAP[coordRange[i]].lines[2] = figureLines[1]
 		}
 
 	}
@@ -162,22 +185,7 @@ func newCell(coords, color string) *cell {
 	cl.coords = coords
 	cl.lines = []string{"1", "2", "3", "4"}
 	cl.lines = getBlankLines(cl)
-	// for i := 0; i < 4; i++ {
-	// 	if cl.color == "W" {
-	// 		cl.lines[i] = cellWLine
-	// 	} else {
-	// 		switch i {
-	// 		case 0:
-	// 			cl.lines[i] = "  " + cl.coords + "    "
-	// 		case 1:
-	// 			cl.lines[i] = "        "
-	// 		case 2:
-	// 			cl.lines[i] = "        "
-	// 		case 3:
-	// 			cl.lines[i] = "        "
-	// 		}
-	// 	}
-	// }
+
 	return cl
 }
 
@@ -192,12 +200,39 @@ func getBlankLines(cl *cell) []string {
 	return lines
 }
 
+func preapareGame() {
+	startCoords := []string{"B1", "D1", "F1", "H1", "A2", "C2", "E2", "G2", "B3", "D3", "F3", "H3", //белые
+		"A6", "C6", "E6", "G6", "B7", "D7", "F7", "H7", "A8", "C8", "E8", "G8"} //Черные
+	pl := 1
+	for i := range startCoords {
+		if i >= 12 {
+			pl = 2
+		}
+		fig := newFigure(pl, i)
+		fig.setCoords(startCoords[i])
+	}
+}
+
+func clearTerm() {
+	cmd := exec.Command("cmd", "/c", "cls") //Windows example, its tested
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+}
+
 func main() {
 	checkersMAP = make(map[int]*figure)
 	board := buildBoard()
-
-	fig := newFigure(1, 0)
-	fig.setCoords("B1")
+	preapareGame()
+	clearTerm()
+	//fig := newFigure(1, 0)
+	//fig.setCoords("B1")
+	board.update()
+	drawBoard(board)
+	//fig.setCoords("C5")
+	utils.InputString("тест ввода:")
+	checkersMAP[9].setCoords("E4")
+	fmt.Println("////////////////////////")
+	clearTerm()
 	board.update()
 	drawBoard(board)
 }
