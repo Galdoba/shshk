@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/Galdoba/utils"
 )
@@ -16,7 +17,7 @@ const (
 )
 
 var coordRange []string
-var checkersMAP map[int]*figure
+var checkersMAP map[int]figure
 var globalError string
 
 func coordsValid(coord string) bool {
@@ -28,28 +29,68 @@ func coordsValid(coord string) bool {
 	return false
 }
 
-type figure struct {
-	player  int
-	id      int
-	fType   string
-	fCoords string
+type figure interface {
+	figureLines() []string
+	figureCoords() string
+	figurePlayer() int
+	figureMaximumRange() int
+	figureID() int
+	figureSetCoords(string)
 }
 
-func newFigure(player int, id int) *figure {
-	fgr := &figure{}
-	fgr.player = player
-	fgr.id = id
-	fgr.fType = figureTypePawn
-	checkersMAP[id] = fgr
-	return fgr
+type pawn struct {
+	player       int
+	id           int
+	maximumRange int
+	fCoords      string
 }
 
-func (fgr *figure) setCoords(coords string) {
+func newPawn(player int, id int) *pawn {
+	p := &pawn{}
+	p.player = player
+	p.id = id
+	p.maximumRange = 1
+	checkersMAP[id] = p
+	return p
+}
+
+func (p *pawn) figureID() int {
+	return p.id
+}
+
+func (p *pawn) figurePlayer() int {
+	return p.player
+}
+
+func (p *pawn) figureMaximumRange() int {
+	return p.maximumRange
+}
+
+func (p *pawn) figureLines() []string {
+	var lines []string
+	switch p.player {
+	case 1:
+		lines = append(lines, " *+  +* ")
+		lines = append(lines, " *++++* ")
+	case 2:
+		lines = append(lines, " *-  -* ")
+		lines = append(lines, " *----* ")
+	default:
+		globalError = "Unknown player " + strconv.Itoa(p.player)
+	}
+	return lines
+}
+
+func (p *pawn) figureCoords() string {
+	return p.fCoords
+}
+
+func (p *pawn) figureSetCoords(coords string) {
 	if !coordsValid(coords) {
 		globalError = coords + " is not Valid"
 		return
 	}
-	fgr.fCoords = coords
+	p.fCoords = coords
 }
 
 type board struct {
@@ -112,29 +153,27 @@ func drawBoard(b *board) {
 	fmt.Println("        A       B       C       D       E       F       G       H")
 }
 
-func figureLines(fType string, player int) []string {
+func reverseSlice(sl []string) []string {
+	for i := len(sl)/2 - 1; i >= 0; i-- {
+		opp := len(sl) - 1 - i
+		sl[i], sl[opp] = sl[opp], sl[i]
+	}
+	return sl
+}
+
+func pawnLines(player int) []string {
 	var lines []string
-	switch fType {
-	case figureTypePawn:
-		if player == 1 {
-			lines = append(lines, " *+  +* ")
-			lines = append(lines, " *++++* ")
-		}
-		if player == 2 {
-			lines = append(lines, " *-  -* ")
-			lines = append(lines, " *----* ")
-		}
-	case figureTypeQueen:
-		if player == 1 {
-			lines = append(lines, " *+||+* ")
-			lines = append(lines, " *++++* ")
-		}
-		if player == 2 {
-			lines = append(lines, " *-||-* ")
-			lines = append(lines, " *----* ")
-		}
+	switch player {
+	case 1:
+
+		lines = append(lines, " *+  +* ")
+		lines = append(lines, " *++++* ")
+
+	case 2:
+		lines = append(lines, " *-  -* ")
+		lines = append(lines, " *----* ")
 	default:
-		globalError = "Unknown type: " + fType + " or player " + strconv.Itoa(player)
+		globalError = "Unknown player " + strconv.Itoa(player)
 	}
 	return lines
 }
@@ -146,13 +185,14 @@ func (b *board) update() {
 		b.cellMAP[coordRange[i]].lines = lines
 		for _, v := range checkersMAP {
 
-			if v.fCoords != coordRange[i] {
+			if v.figureCoords() != coordRange[i] {
 
 				continue
 			}
-			figureLines := figureLines(v.fType, v.player)
-			b.cellMAP[coordRange[i]].lines[1] = figureLines[0]
-			b.cellMAP[coordRange[i]].lines[2] = figureLines[1]
+			//pawnLines := pawnLines(v.player)
+			pawnLines := v.figureLines()
+			b.cellMAP[coordRange[i]].lines[1] = pawnLines[0]
+			b.cellMAP[coordRange[i]].lines[2] = pawnLines[1]
 		}
 
 	}
@@ -166,6 +206,51 @@ func placeTag(s string, tag string) string {
 func letterRange() []string {
 	lRange := []string{"A", "B", "C", "D", "E", "F", "G", "H"}
 	return lRange
+}
+
+func convertLetter(s string) int {
+	s = strings.ToUpper(s)
+	switch s {
+	case "A":
+		return 1
+	case "B":
+		return 2
+	case "C":
+		return 3
+	case "D":
+		return 4
+	case "E":
+		return 5
+	case "F":
+		return 6
+	case "G":
+		return 7
+	case "H":
+		return 8
+	}
+	return -1
+}
+
+func convertNumber(i int) string {
+	switch i {
+	case 1:
+		return "A"
+	case 2:
+		return "B"
+	case 3:
+		return "C"
+	case 4:
+		return "D"
+	case 5:
+		return "E"
+	case 6:
+		return "F"
+	case 7:
+		return "G"
+	case 8:
+		return "H"
+	}
+	return "Z"
 }
 
 func numberRange() []string {
@@ -208,8 +293,8 @@ func preapareGame() {
 		if i >= 12 {
 			pl = 2
 		}
-		fig := newFigure(pl, i)
-		fig.setCoords(startCoords[i])
+		fig := newPawn(pl, i)
+		fig.figureSetCoords(startCoords[i])
 	}
 }
 
@@ -220,30 +305,103 @@ func clearTerm() {
 }
 
 func main() {
-	checkersMAP = make(map[int]*figure)
+	checkersMAP = make(map[int]figure)
 	board := buildBoard()
 	preapareGame()
 	clearTerm()
-	//fig := newFigure(1, 0)
-	//fig.setCoords("B1")
+	//fig := newpawn(1, 0)
+	//fig.figureSetCoords("B1")
 	board.update()
 	drawBoard(board)
-	//fig.setCoords("C5")
+	//fig.figureSetCoords("C5")
 	utils.InputString("тест ввода:")
-	checkersMAP[9].setCoords("E4")
+	checkersMAP[9].figureSetCoords("E4")
 	fmt.Println("////////////////////////")
 	clearTerm()
 	board.update()
 	drawBoard(board)
+	Move(checkersMAP[9], "E4")
+
+	moveOptions(checkersMAP[9])
 }
 
-func reverseSlice(sl []string) []string {
-	for i := len(sl)/2 - 1; i >= 0; i-- {
-		opp := len(sl) - 1 - i
-		sl[i], sl[opp] = sl[opp], sl[i]
+func isForward(f figure) int {
+	if f.figurePlayer() == 1 {
+		return 8
 	}
-	return sl
+	if f.figurePlayer() == 2 {
+		return 1
+	}
+	return -1
 }
+
+func currentRow(f figure) int {
+	coords := f.figureCoords()
+	rowCol := strings.Split(coords, "")
+	row, err := strconv.Atoi(rowCol[1])
+	if err != nil {
+		panic(err)
+	}
+	return row
+}
+
+//Move - двигает фигуру, если координаты валидны
+func Move(f figure, newCoords string) {
+	currentRow := currentRow(f)
+	endRow := isForward(f)
+	forwardRows := forwardRows(currentRow, endRow)
+	fmt.Println(forwardRows)
+}
+
+func forwardRows(currentRow, endRow int) []int {
+	var forwardRows []int
+	if endRow == 8 {
+		for currentRow < endRow {
+			currentRow++
+			forwardRows = append(forwardRows, currentRow)
+		}
+	}
+	if endRow == 1 {
+		for currentRow > endRow {
+			currentRow++
+			forwardRows = append(forwardRows, currentRow)
+		}
+	}
+
+	return forwardRows
+}
+
+func moveOptions(f figure) []string {
+	//var pCoords []string
+	var allCoords []string
+	for i := 1; i <= f.figureMaximumRange(); i++ {
+		coords := f.figureCoords()
+		row, col := coordsToRC(coords)
+		allCoords = append(allCoords, rcToCoords(row+i, col+i))
+		allCoords = append(allCoords, rcToCoords(row+i, col-i))
+		allCoords = append(allCoords, rcToCoords(row-i, col-i))
+		allCoords = append(allCoords, rcToCoords(row-i, col+i))
+	}
+	fmt.Println(allCoords)
+	return allCoords
+}
+
+func coordsToRC(s string) (int, int) {
+	rcStr := strings.Split(s, "")
+	col := convertLetter(rcStr[0])
+	row, _ := strconv.Atoi(rcStr[1])
+	return row, col
+}
+
+func rcToCoords(row, col int) string {
+	return convertNumber(col) + strconv.Itoa(row)
+}
+
+/*
+движение:
+1. Собираем ВСЕ клетки под угрозой
+1а.
+*/
 
 /*
 oooooooo
