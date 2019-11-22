@@ -40,7 +40,10 @@ type figure interface {
 	figureMaximumRange() int
 	figureID() int
 	figureSetCoords(string)
+	figureValidMoveDirections() []string
 }
+
+/////////////////////////PAWN
 
 type pawn struct {
 	player       int
@@ -85,6 +88,21 @@ func (p *pawn) figureLines() []string {
 	return lines
 }
 
+func (p *pawn) figureValidMoveDirections() []string {
+	var dir []string
+	switch p.player {
+	case 1:
+		dir = append(dir, directionNorthEast)
+		dir = append(dir, directionNorthWest)
+	case 2:
+		dir = append(dir, directionSouthEast)
+		dir = append(dir, directionSouthWest)
+	default:
+		fmt.Println("Error: Unknown player detected ( player =", p.player, ")")
+	}
+	return dir
+}
+
 func (p *pawn) figureCoords() string {
 	return p.fCoords
 }
@@ -95,6 +113,67 @@ func (p *pawn) figureSetCoords(coords string) {
 		return
 	}
 	p.fCoords = coords
+}
+
+///////////////////KING
+
+type king struct {
+	player       int
+	id           int
+	maximumRange int
+	fCoords      string
+}
+
+func newKing(player int, id int) *king {
+	k := &king{}
+	k.player = player
+	k.id = id
+	k.maximumRange = 7
+	checkersMAP[id] = k
+	return k
+}
+
+func (k *king) figureID() int {
+	return k.id
+}
+
+func (k *king) figurePlayer() int {
+	return k.player
+}
+
+func (k *king) figureMaximumRange() int {
+	return k.maximumRange
+}
+
+func (k *king) figureLines() []string {
+	var lines []string
+	switch k.player {
+	case 1:
+		lines = append(lines, " *+||+* ")
+		lines = append(lines, " *++++* ")
+	case 2:
+		lines = append(lines, " *-||-* ")
+		lines = append(lines, " *----* ")
+	default:
+		globalError = "Unknown player " + strconv.Itoa(k.player)
+	}
+	return lines
+}
+
+func (k *king) figureValidMoveDirections() []string {
+	return directionsAll()
+}
+
+func (k *king) figureCoords() string {
+	return k.fCoords
+}
+
+func (k *king) figureSetCoords(coords string) {
+	if !coordsValid(coords) {
+		globalError = coords + " is not Valid"
+		return
+	}
+	k.fCoords = coords
 }
 
 type board struct {
@@ -183,12 +262,14 @@ func pawnLines(player int) []string {
 }
 
 func (b *board) update() {
+	promotePawns()
 	for i := range coordRange {
 		lines := getBlankLines(b.cellMAP[coordRange[i]])
 		//lines[0] = placeTag(lines[0], coordRange[i])
 		b.cellMAP[coordRange[i]].lines = lines
 		for _, v := range checkersMAP {
 			//fmt.Println(k)
+
 			if v.figureCoords() != coordRange[i] {
 
 				continue
@@ -314,28 +395,137 @@ func main() {
 	checkersMAP = make(map[int]figure)
 	board := buildBoard()
 	//preapareGame()
+	fig := newPawn(2, 0)
+	fig.figureSetCoords("F7")
+	fig2 := newPawn(1, 1)
+	fig2.figureSetCoords("G6")
+	fig3 := newPawn(1, 2)
+	fig3.figureSetCoords("B7")
 	clearTerm()
-	fig := newPawn(1, 0)
-	fig.figureSetCoords("D5")
-	fig1 := newPawn(1, 1)
-	fig1.figureSetCoords("E4")
-
-	fig2 := newPawn(2, 2)
-	fig2.figureSetCoords("A2")
-
-	fig3 := newPawn(2, 3)
-	fig3.figureSetCoords("C4")
-
 	board.update()
 	drawBoard(board)
 
 	utils.InputString("тест ввода:")
-
-	clearTerm()
+	//Move(figureByCoordinates("F7"), "E8")
+	Attack(fig2, fig)
 	board.update()
 	drawBoard(board)
-	projectMovement(fig, directionsAll()...)
+	Move(figureByCoordinates("B7"), "C8")
+	//board.update()
+	//clearTerm()
+	board.update()
+	drawBoard(board)
+	readCommand("A2 take B2")
+	board.update()
+	drawBoard(board)
 
+}
+
+func readCommand(command string) (string, string, string) {
+	command = strings.ToUpper(command)
+	command = strings.TrimRight(command, " ")
+	commPart := strings.Split(command, " ")
+	return commPart[0], commPart[2], commPart[1]
+}
+
+func performAttack(command string) {
+	//coord1, coord2, action := readCommand(command)
+
+	fig1 := figureByCoordinates("D5")
+	fig2 := figureByCoordinates("E4")
+	pth := findPath(fig1.figureCoords(), fig2.figureCoords())
+	start := fig1.figureCoords()
+	dir := pth.direction
+	dist := pth.distance
+	if !testForAttack(fig1, pth) {
+		fmt.Println("Attack impossible")
+		return
+	}
+	//checkersMAP[fig2.figureID()] = nil
+	delete(checkersMAP, fig2.figureID())
+	checkersMAP[fig1.figureID()].figureSetCoords(navigateFrom(start, dir, dist+1))
+
+}
+
+func promotePawns() {
+	for k, v := range checkersMAP {
+		if _, ok := v.(*pawn); ok {
+			fmt.Println("pawn", ok)
+			continue
+		}
+		fmt.Println(k)
+		coords := v.figureCoords()
+		r, _ := coordsToRC(coords)
+		pl := v.figurePlayer()
+		lastRow := 0
+		switch pl {
+		case 1:
+			lastRow = 8
+		case 2:
+			lastRow = 1
+		}
+
+		if r != lastRow {
+			continue
+		}
+		id := v.figurePlayer()
+		delete(checkersMAP, id)
+		king := newKing(pl, id)
+		king.figureSetCoords(coords)
+
+		fmt.Println("row", r)
+	}
+}
+
+func promotePawn(p pawn) {
+	coords := p.figureCoords()
+	row, _ := coordsToRC(coords)
+	pl := p.figurePlayer()
+	lastRow := 0
+	switch pl {
+	case 1:
+		lastRow = 8
+	case 2:
+		lastRow = 1
+	}
+	if row != lastRow {
+		return
+	}
+	id := p.figureID()
+	delete(checkersMAP, id) //не сторого обязательно
+	king := newKing(pl, id)
+	king.figureSetCoords(coords)
+
+}
+
+func Attack(fig1, fig2 figure) {
+	pth := findPath(fig1.figureCoords(), fig2.figureCoords())
+	start := fig1.figureCoords()
+	dir := pth.direction
+	dist := pth.distance
+	if !testForAttack(fig1, pth) {
+		fmt.Println("Attack impossible")
+		return
+	}
+	//checkersMAP[fig2.figureID()] = nil
+	delete(checkersMAP, fig2.figureID())
+	landCoords := navigateFrom(start, dir, dist+1)
+	fig1.figureSetCoords(landCoords)
+	fmt.Println("Land to", landCoords)
+	fmt.Println("attack promotion start")
+	if pwn, ok := fig1.(*pawn); ok {
+		fmt.Println("attack promotion - go")
+		promotePawn(*pwn)
+		fmt.Println("attack promotion - end")
+	}
+}
+
+func Move(fig figure, newCoords string) {
+	fig.figureSetCoords(newCoords)
+	//promotePawns()
+	if pwn, ok := fig.(*pawn); ok {
+		promotePawn(*pwn)
+	}
 }
 
 type path struct {
@@ -400,14 +590,6 @@ func currentRow(f figure) int {
 	return row
 }
 
-//Move - двигает фигуру, если координаты валидны
-func Move(f figure, newCoords string) {
-	currentRow := currentRow(f)
-	endRow := isForward(f)
-	forwardRows := forwardRows(currentRow, endRow)
-	fmt.Println(forwardRows)
-}
-
 func forwardRows(currentRow, endRow int) []int {
 	var forwardRows []int
 	if endRow == 8 {
@@ -426,9 +608,9 @@ func forwardRows(currentRow, endRow int) []int {
 	return forwardRows
 }
 
-func projectMovement(f figure, directions ...string) []string {
-	var moveCoords []string
+func attackList(f figure) []string {
 	var attackCoords []string
+	directions := directionsAll()
 	maxRange := f.figureMaximumRange()
 	for d := range directions {
 		coords := f.figureCoords()
@@ -442,31 +624,95 @@ func projectMovement(f figure, directions ...string) []string {
 			}
 			p := path{coords, directions[d], r}
 			if p.isFree() {
-				fmt.Println("Path to", newCoords, "is free")
+				continue
+			}
+			fmt.Println("Path to", newCoords, "is not free")
+			fmt.Println("Can attack", testForAttack(f, p))
+			if testForAttack(f, p) {
+				attackCoords = append(attackCoords, newCoords)
+			}
+			r = r + maxRange + 1
+
+		}
+	}
+	fmt.Println("return attackCoords:", attackCoords)
+	return attackCoords
+}
+
+func moveList(f figure) []string {
+	var moveCoords []string
+	directions := f.figureValidMoveDirections()
+	maxRange := f.figureMaximumRange()
+	for d := range directions {
+		coords := f.figureCoords()
+		for r := 0; r <= maxRange; r++ {
+			newCoords := navigateFrom(coords, directions[d], r)
+			if newCoords == f.figureCoords() {
+				continue
+			}
+			if !coordsValid(newCoords) {
+				continue
+			}
+			p := path{coords, directions[d], r}
+			if p.isFree() {
+				//fmt.Println("Path to", newCoords, "is free")
 				moveCoords = append(moveCoords, newCoords)
 			} else {
-				fmt.Println("Path to", newCoords, "is not free")
-				fmt.Println("Can attack", testForAttack(f, p))
-				if testForAttack(f, p) {
-					attackCoords = append(attackCoords, newCoords)
-				}
+				// fmt.Println("Path to", newCoords, "is not free")
+				// fmt.Println("Can attack", testForAttack(f, p))
+				// if testForAttack(f, p) {
+				// 	//	attackCoords = append(attackCoords, newCoords)
+				// }
 				r = r + maxRange + 1
 			}
 		}
 	}
-	if len(attackCoords) > 0 {
-		fmt.Println("return attackCoords:", attackCoords)
-		return attackCoords
-	}
+
 	fmt.Println("return moveCoords:", moveCoords)
 	return moveCoords
 }
 
-func attackList()
+// func projectMovement(f figure, directions ...string) []string {
+// 	var moveCoords []string
+// 	var attackCoords []string
+// 	maxRange := f.figureMaximumRange()
+// 	for d := range directions {
+// 		coords := f.figureCoords()
+// 		for r := 0; r <= maxRange; r++ {
+// 			newCoords := navigateFrom(coords, directions[d], r)
+// 			if newCoords == f.figureCoords() {
+// 				continue
+// 			}
+// 			if !coordsValid(newCoords) {
+// 				continue
+// 			}
+// 			p := path{coords, directions[d], r}
+// 			if p.isFree() {
+// 				fmt.Println("Path to", newCoords, "is free")
+// 				moveCoords = append(moveCoords, newCoords)
+// 			} else {
+// 				fmt.Println("Path to", newCoords, "is not free")
+// 				fmt.Println("Can attack", testForAttack(f, p))
+// 				if testForAttack(f, p) {
+// 					attackCoords = append(attackCoords, newCoords)
+// 				}
+// 				r = r + maxRange + 1
+// 			}
+// 		}
+// 	}
+// 	if len(attackCoords) > 0 {
+// 		fmt.Println("return attackCoords:", attackCoords)
+// 		return attackCoords
+// 	}
+// 	fmt.Println("return moveCoords:", moveCoords)
+// 	return moveCoords
+// }
+
+//func attackList()
 
 func testForAttack(f figure, p path) bool {
 	attackCoords := navigateFrom(f.figureCoords(), p.direction, p.distance)
-	if allied(f, figureOnCoordinates(attackCoords)) {
+	if allied(f, figureByCoordinates(attackCoords)) {
 		return false
 	}
 	landCoord := navigateFrom(f.figureCoords(), p.direction, p.distance+1)
@@ -483,7 +729,7 @@ func allied(f1 figure, f2 figure) bool {
 	return false
 }
 
-func figureOnCoordinates(coords string) figure {
+func figureByCoordinates(coords string) figure {
 	for _, v := range checkersMAP {
 		if v.figureCoords() == coords {
 			return v
@@ -518,6 +764,7 @@ func moveOptions(f figure) []string {
 
 func coordsToRC(s string) (int, int) {
 	rcStr := strings.Split(s, "")
+	fmt.Println(rcStr)
 	col := convertLetter(rcStr[0])
 	row, _ := strconv.Atoi(rcStr[1])
 	return row, col
@@ -542,7 +789,7 @@ func directionToRC(dir string) (int, int) {
 	return addRow, addCol
 }
 
-func getPath(start string, end string) (string, int) { //TODO: функцию явно надо доработать - брут форс не наш метод!
+func findPath(start string, end string) path { //TODO: функцию явно надо доработать - брут форс не наш метод!
 	row, _ := coordsToRC(start)
 	distance := 0
 	direction := "No Path"
@@ -577,8 +824,47 @@ func getPath(start string, end string) (string, int) { //TODO: функцию я
 		}
 
 	}
-	return direction, distance
+	p := path{start, direction, distance}
+	return p
 }
+
+// func getPath(start string, end string) (string, int) { //TODO: функцию явно надо доработать - брут форс не наш метод!
+// 	row, _ := coordsToRC(start)
+// 	distance := 0
+// 	direction := "No Path"
+// 	var checkEnd []string
+// 	for i := 1; i < 8; i++ {
+// 		checkEnd = append(checkEnd, navigateFrom(start, directionNorthEast, i))
+// 		checkEnd = append(checkEnd, navigateFrom(start, directionSouthEast, i))
+// 		checkEnd = append(checkEnd, navigateFrom(start, directionSouthWest, i))
+// 		checkEnd = append(checkEnd, navigateFrom(start, directionNorthWest, i))
+// 	}
+// 	checkEnd = excludeInvalidCoords(checkEnd)
+// 	for j := range checkEnd {
+// 		if checkEnd[j] != end {
+// 			continue
+// 		}
+// 		endRow, _ := coordsToRC(end)
+// 		distance = endRow - row
+// 		if distance < 0 {
+// 			distance = distance * -1
+// 		}
+// 		if navigateFrom(start, directionNorthEast, distance) == end {
+// 			direction = directionNorthEast
+// 		}
+// 		if navigateFrom(start, directionSouthEast, distance) == end {
+// 			direction = directionSouthEast
+// 		}
+// 		if navigateFrom(start, directionSouthWest, distance) == end {
+// 			direction = directionSouthWest
+// 		}
+// 		if navigateFrom(start, directionNorthWest, distance) == end {
+// 			direction = directionNorthWest
+// 		}
+
+// 	}
+// 	return direction, distance
+// }
 
 func excludeInvalidCoords(coordsList []string) []string {
 	var validCoords []string
